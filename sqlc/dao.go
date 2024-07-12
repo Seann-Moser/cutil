@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/viper"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.uber.org/zap"
+	"net/http"
 	"reflect"
 	"time"
 )
@@ -45,6 +46,39 @@ func NewSQLDao(ctx context.Context) (*DAO, error) {
 		tablesNames:   make([]string, 0),
 		tableColumns:  map[string]map[string]db.Column{},
 	}, nil
+}
+
+func (d *DAO) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if d.ctx != nil {
+			daoCtx := context.WithValue(r.Context(), "go-serve-dao", d) //nolint staticcheck
+			ctx, err := orm.WithTableContext(daoCtx, d.ctx, d.tablesNames...)
+			if err == nil {
+				r = r.WithContext(ctx)
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (d *DAO) Close() {
+	d.db.Close()
+
+}
+
+func (d *DAO) GetContext() context.Context {
+	return d.ctx
+}
+
+func (d *DAO) AddTablesToCtx(ctx context.Context) context.Context {
+	if d.ctx != nil {
+		daoCtx := context.WithValue(ctx, "go-serve-dao", d) //nolint staticcheck
+		ctx, err := orm.WithTableContext(daoCtx, d.ctx, d.tablesNames...)
+		if err == nil {
+			return ctx
+		}
+	}
+	return d.ctx
 }
 
 func AddTable[T any](ctx context.Context, dao *DAO, datasetName string, queryType orm.QueryType) (context.Context, error) {
