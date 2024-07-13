@@ -3,9 +3,7 @@ package orm
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/Seann-Moser/cutil/sqlc/orm/db"
-	"strings"
 )
 
 var (
@@ -13,7 +11,7 @@ var (
 	ErrDBNotInCtx    = errors.New("db is missing from context")
 )
 
-type tableCtxName string
+type TableCtxName string
 type DBCtxName string
 
 const DBContext = "db-base-context"
@@ -31,7 +29,7 @@ func AddTableCtx[T any](ctx context.Context, db db.DB, dataset string, queryType
 	if err != nil {
 		return nil, err
 	}
-	ctx = context.WithValue(ctx, tableCtxName(table.Name), table)
+	ctx = context.WithValue(ctx, TableCtxName(table.Name), table)
 	return ctx, nil
 }
 
@@ -54,93 +52,16 @@ func GetDBContext(ctx context.Context, name string) (db.DB, error) {
 	return value.(db.DB), nil
 }
 
-func GetTableCtx[T any](ctx context.Context, suffix ...string) (*Table[T], error) {
-	var s T
-	name := ToSnakeCase(getType(s))
-
-	value := ctx.Value(tableCtxName(strings.Join(append([]string{name}, suffix...), "_")))
-	if value == nil {
-		return nil, ErrTableNotInCtx
-	}
-	return value.(*Table[T]), nil
-}
-
 func WithTableContext(baseCtx context.Context, tableCtx context.Context, names ...string) (context.Context, error) {
 	for _, name := range names {
-		value := tableCtx.Value(tableCtxName(name))
+		value := tableCtx.Value(TableCtxName(name))
 		if value == nil {
 			return nil, ErrTableNotInCtx
 		}
-		baseCtx = context.WithValue(baseCtx, tableCtxName(name), value)
+		baseCtx = context.WithValue(baseCtx, TableCtxName(name), value)
 
 	}
 	return baseCtx, nil
-}
-
-func InsertCtx[T any](ctx context.Context, data *T, suffix ...string) (string, error) {
-	table, err := GetTableCtx[T](ctx, suffix...)
-	if err != nil {
-		return "", err
-	}
-	if data == nil {
-		return "", fmt.Errorf("no data provided")
-	}
-	id, err := table.Insert(ctx, nil, *data)
-	if err != nil {
-		return "", err
-	}
-	return id, nil
-}
-
-func DeleteAllCtx[T any](ctx context.Context, data []*T, suffix ...string) error {
-	table, err := GetTableCtx[T](ctx, suffix...)
-	if err != nil {
-		return err
-	}
-	if data == nil {
-		return fmt.Errorf("no data provided")
-	}
-	for _, d := range data {
-		err = table.Delete(ctx, nil, *d)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func DeleteCtx[T any](ctx context.Context, data *T, suffix ...string) error {
-	table, err := GetTableCtx[T](ctx, suffix...)
-	if err != nil {
-		return err
-	}
-	if data == nil {
-		return fmt.Errorf("no data provided")
-	}
-	return table.Delete(ctx, nil, *data)
-}
-
-func UpdateCtx[T any](ctx context.Context, data *T, suffix ...string) error {
-	table, err := GetTableCtx[T](ctx, suffix...)
-	if err != nil {
-		return err
-	}
-	if data == nil {
-		return fmt.Errorf("no data provided")
-	}
-	return table.Update(ctx, nil, *data)
-}
-
-func ListCtx[T any](ctx context.Context, stmt ...*WhereStmt) ([]*T, error) {
-	q := GetQuery[T](ctx)
-	q.WhereStmts = append(q.WhereStmts, stmt...)
-	return q.Run(ctx, nil)
-}
-
-func GetIDCtx[T any](ctx context.Context, id string) (*T, error) {
-	q := GetQuery[T](ctx)
-	q.Where(q.Column("id"), "=", "AND", 0, id)
-	return q.RunSingle(ctx, nil)
 }
 
 func GetColumn[T any](ctx context.Context, name string) db.Column {
