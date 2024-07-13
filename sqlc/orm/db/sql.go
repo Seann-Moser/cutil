@@ -29,14 +29,14 @@ var (
 
 func Flags() *pflag.FlagSet {
 	fs := pflag.NewFlagSet("sql-db", pflag.ExitOnError)
-	fs.Bool("sql-db-update-columns", false, "")
+	fs.Bool("sql-db-update-Columns", false, "")
 	fs.String("sql-db-Prefix", "", "")
 	return fs
 }
 func NewSql(db *sqlx.DB) *SqlDB {
 	return &SqlDB{
 		sql:           db,
-		updateColumns: viper.GetBool("sql-db-update-columns"),
+		updateColumns: viper.GetBool("sql-db-update-Columns"),
 		tablePrefix:   viper.GetString("sql-db-Prefix"),
 	}
 }
@@ -153,7 +153,7 @@ func (s *SqlDB) ColumnUpdater(ctx context.Context, dataset, table string, column
 
 	if len(addColumns) > 0 {
 		addStmt := generateColumnStatements(alterTable, "add", addColumns)
-		logc.Debug(ctx, "adding columns to table", zap.String("query", addStmt))
+		logc.Debug(ctx, "adding Columns to table", zap.String("query", addStmt))
 		_, err := s.sql.ExecContext(ctx, addStmt)
 		if err != nil {
 			return err
@@ -161,7 +161,7 @@ func (s *SqlDB) ColumnUpdater(ctx context.Context, dataset, table string, column
 	}
 	if len(removeColumns) > 0 {
 		removeStmt := generateColumnTypeStatements(alterTable, "remove", removeColumns)
-		logc.Debug(ctx, "removing columns from table", zap.String("table", table), zap.String("query", removeStmt))
+		logc.Debug(ctx, "removing Columns from table", zap.String("table", table), zap.String("query", removeStmt))
 		_, err := s.sql.ExecContext(ctx, removeStmt)
 		if err != nil {
 			return err

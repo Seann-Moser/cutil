@@ -15,7 +15,7 @@ func (m MockDB) GetDataset(ds string) string {
 	if len(m.Prefix) > 0 {
 		return m.Prefix + ds
 	}
-	return fmt.Sprintf(ds)
+	return ds
 }
 
 type MockTable struct {
@@ -25,9 +25,9 @@ type MockTable struct {
 }
 
 type MockData struct {
-	name    string
-	dataset string
-	columns map[string]Column
+	Name    string
+	Dataset string
+	Columns map[string]Column
 }
 
 func NewMockDB() *MockDB {
@@ -47,7 +47,7 @@ func (m MockDB) CreateTable(ctx context.Context, dataset, table string, columns 
 	}
 	for _, col := range columns {
 		if !isValidColumnName(col.Name) {
-			return fmt.Errorf("column name %s is not valid", col.Name)
+			return fmt.Errorf("column Name %s is not valid", col.Name)
 		}
 	}
 	return nil

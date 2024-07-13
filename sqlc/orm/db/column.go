@@ -6,7 +6,7 @@ import (
 )
 
 type Column struct {
-	Name        string `json:"name"`
+	Name        string `json:"Name"`
 	Table       string `json:"-"`
 	Dataset     string `json:"-"`
 	ColumnOrder int    `json:"-"`

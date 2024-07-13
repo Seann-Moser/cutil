@@ -88,7 +88,7 @@ func AddTable[T any](ctx context.Context, dao *DAO, datasetName string, queryTyp
 		logc.Error(ctx, "failed creating table", zap.String("table", getType(t)))
 		return ctx, err
 	}
-	table, err := orm.GetTableCtx[T](tmpCtx)
+	table, err := GetTableCtx[T](tmpCtx)
 	if err != nil {
 		return nil, err
 	}

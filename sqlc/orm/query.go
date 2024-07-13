@@ -17,7 +17,7 @@ import (
 
 type Query[T any] struct {
 	Name                  string
-	err                   error
+	Err                   error
 	SelectColumns         []db.Column
 	DistinctSelectColumns []db.Column
 	FromTable             *Table[T]
@@ -49,15 +49,6 @@ type JoinStmt struct {
 	JoinType string
 }
 
-func GetQuery[T any](ctx context.Context) *Query[T] {
-	table, err := GetTableCtx[T](ctx)
-	if err != nil {
-		return &Query[T]{err: err}
-	}
-	q := QueryTable[T](table)
-	return q
-}
-
 func generateGroupBy(groupBy []db.Column) string {
 	var columns []string
 	for _, c := range groupBy {
@@ -81,7 +72,7 @@ func generateGroupBy(groupBy []db.Column) string {
 func QueryTable[T any](table *Table[T]) *Query[T] {
 	return &Query[T]{
 		Name:                  "",
-		err:                   nil,
+		Err:                   nil,
 		SelectColumns:         []db.Column{},
 		DistinctSelectColumns: []db.Column{},
 		FromTable:             table,
@@ -121,12 +112,12 @@ func (q *Query[T]) From(query *Query[T]) *Query[T] {
 }
 
 func (q *Query[T]) Column(name string) db.Column {
-	if q.err != nil {
+	if q.Err != nil {
 		return db.Column{}
 	}
 	c := q.FromTable.GetColumn(name)
 	if c.Name == "" {
-		q.err = fmt.Errorf("missing column from table(%s) %s", q.FromTable.FullTableName(), name)
+		q.Err = fmt.Errorf("missing column from table(%s) %s", q.FromTable.FullTableName(), name)
 	}
 	return c
 }
@@ -328,8 +319,8 @@ func (q *Query[T]) RunCtx(ctx context.Context) ([]*T, error) {
 }
 
 func (q *Query[T]) Run(ctx context.Context, db db.DB, args ...interface{}) ([]*T, error) {
-	if q.err != nil {
-		return nil, q.err
+	if q.Err != nil {
+		return nil, q.Err
 	}
 	if q.Name != "" {
 		query, err := cachec.Get[string](ctx, "queries", q.Name)
@@ -420,7 +411,7 @@ func GetMD5Hash(text string) string {
 }
 
 func (q *Query[T]) buildSqlQuery() *Query[T] {
-	if q.err != nil {
+	if q.Err != nil {
 		return q
 	}
 	var isGroupBy = len(q.GroupByStmt) > 0

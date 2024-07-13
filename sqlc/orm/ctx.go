@@ -63,7 +63,3 @@ func WithTableContext(baseCtx context.Context, tableCtx context.Context, names .
 	}
 	return baseCtx, nil
 }
-
-func GetColumn[T any](ctx context.Context, name string) db.Column {
-	return GetQuery[T](ctx).Column(name)
-}
