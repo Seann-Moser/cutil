@@ -39,9 +39,10 @@ func NewSQLDao(ctx context.Context) (*DAO, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	d := db.NewSql(dao)
 	return &DAO{
-		db:            db.NewSql(dao),
+		ctx:           orm.AddDBContext(ctx, "", d),
+		db:            d,
 		updateColumns: viper.GetBool(DBUpdateTablesFlag),
 		tablesNames:   make([]string, 0),
 		tableColumns:  map[string]map[string]db.Column{},
@@ -70,6 +71,11 @@ func (d *DAO) GetContext() context.Context {
 	return d.ctx
 }
 
+func (d *DAO) SetContext(ctx context.Context) context.Context {
+	d.ctx = ctx
+	return d.ctx
+}
+
 func (d *DAO) AddTablesToCtx(ctx context.Context) context.Context {
 	if d.ctx != nil {
 		daoCtx := context.WithValue(ctx, "go-serve-dao", d) //nolint staticcheck
@@ -81,25 +87,23 @@ func (d *DAO) AddTablesToCtx(ctx context.Context) context.Context {
 	return d.ctx
 }
 
-func AddTable[T any](ctx context.Context, dao *DAO, datasetName string, queryType orm.QueryType) (context.Context, error) {
-	tmpCtx, err := orm.AddTableCtx[T](ctx, dao.db, datasetName, queryType)
+func AddTable[T any](dao *DAO, datasetName string, queryType orm.QueryType) error {
+	tmpCtx, err := orm.AddTableCtx[T](dao.GetContext(), dao.db, datasetName, queryType)
 	if err != nil {
 		var t T
-		logc.Error(ctx, "failed creating table", zap.String("table", getType(t)))
-		return ctx, err
+		return fmt.Errorf("failed creating table(%s): %w", getType(t), err)
 	}
 	table, err := GetTableCtx[T](tmpCtx)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed getting table from context")
 	}
 	dao.tablesNames = append(dao.tablesNames, table.Name)
 	if _, found := dao.tableColumns[table.FullTableName()]; !found {
 		dao.tableColumns[table.FullTableName()] = table.Columns
 	}
 
-	logc.Debug(ctx, "adding table", zap.String("table", table.FullTableName()))
-	dao.ctx = tmpCtx
-	return tmpCtx, nil
+	dao.SetContext(tmpCtx)
+	return nil
 }
 
 func getType(myVar interface{}) string {

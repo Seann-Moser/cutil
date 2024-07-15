@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/Seann-Moser/cutil/logc"
+	"github.com/google/uuid"
 	"sync"
 	"time"
 
@@ -21,19 +22,32 @@ type CacheMonitor interface {
 	GetGroupKeys(ctx context.Context, group string) (map[string]struct{}, error)
 	DeleteCache(ctx context.Context, group string) error
 	UpdateCache(ctx context.Context, group string, key string) error
+	WaitForTransaction(ctx context.Context, group string, read bool)
+	StartTransaction(ctx context.Context, group string, duration time.Duration, read bool) (string, context.Context, context.CancelFunc)
+	EndTransaction(ctx context.Context, id string, read bool)
 }
 
 type CacheMonitorImpl struct {
 	cleanDuration time.Duration
 	Mutex         *sync.RWMutex
 	groupKeys     map[string]int64
+
+	txMutex            *sync.RWMutex
+	transactionMonitor map[string]*TransactionMonitor
+}
+
+type TransactionMonitor struct {
+	Group string
+	Mutex *sync.RWMutex
 }
 
 func NewMonitor() CacheMonitor {
 	return &CacheMonitorImpl{
-		cleanDuration: time.Minute,
-		groupKeys:     make(map[string]int64),
-		Mutex:         &sync.RWMutex{},
+		cleanDuration:      time.Minute,
+		groupKeys:          make(map[string]int64),
+		Mutex:              &sync.RWMutex{},
+		txMutex:            &sync.RWMutex{},
+		transactionMonitor: make(map[string]*TransactionMonitor),
 	}
 }
 
@@ -145,4 +159,73 @@ func (c *CacheMonitorImpl) findGroupKey(key string, lastUpdated int64) bool {
 		return true
 	}
 	return false
+}
+
+func (c *CacheMonitorImpl) WaitForTransaction(ctx context.Context, group string, read bool) {
+	t, ok := c.transactionMonitor[group]
+	if !ok {
+		return
+	}
+	unlockChan := make(chan struct{})
+
+	go func() {
+		if read {
+			t.Mutex.RLock()
+			defer t.Mutex.RUnlock()
+		} else {
+			t.Mutex.Lock()
+			defer t.Mutex.Unlock()
+		}
+		close(unlockChan)
+	}()
+
+	select {
+	case <-unlockChan:
+		// Mutex was unlocked
+		return
+	case <-ctx.Done():
+		// Context was finished
+		return
+	}
+}
+func (c *CacheMonitorImpl) StartTransaction(ctx context.Context, group string, duration time.Duration, read bool) (string, context.Context, context.CancelFunc) {
+	k := fmt.Sprintf("%s_%s", group, uuid.New().String())
+	c.txMutex.Lock()
+	defer c.txMutex.Unlock()
+	if _, found := c.transactionMonitor[group]; !found {
+		c.transactionMonitor[group] = &TransactionMonitor{
+			Group: group,
+			Mutex: &sync.RWMutex{},
+		}
+	}
+
+	if duration == 0 {
+		if read {
+			c.transactionMonitor[group].Mutex.RLock()
+		} else {
+			c.transactionMonitor[group].Mutex.Lock()
+		}
+		return k, ctx, func() {
+		}
+	}
+	tm, cf := context.WithTimeout(ctx, duration)
+	if read {
+		c.transactionMonitor[group].Mutex.RLock()
+	} else {
+		c.transactionMonitor[group].Mutex.Lock()
+	}
+	return k, tm, cf
+}
+
+func (c *CacheMonitorImpl) EndTransaction(ctx context.Context, group string, read bool) {
+	t, ok := c.transactionMonitor[group]
+	if !ok {
+		return
+	}
+	if read {
+		t.Mutex.RUnlock()
+	} else {
+		t.Mutex.Unlock()
+		t.Mutex.Lock()
+	}
 }

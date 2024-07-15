@@ -149,6 +149,9 @@ func (q *Query[T]) UniqueWhere(column db.Column, conditional, joinOperator strin
 	if level < 0 {
 		level = 0
 	}
+	if q.WhereColumns == nil {
+		q.WhereColumns = map[string]int{}
+	}
 	if column.Name == "" {
 		return q
 	}
@@ -185,6 +188,20 @@ func (q *Query[T]) Where(column db.Column, conditional, joinOperator string, lev
 		JoinOperator: joinOperator,
 	})
 
+	return q
+}
+
+func (q *Query[T]) W(column db.Column, conditional string, value interface{}) *Query[T] {
+	if column.Name == "" {
+		return q
+	}
+	q.WhereStmts = append(q.WhereStmts, &WhereStmt{
+		LeftValue:    column,
+		Conditional:  conditional,
+		RightValue:   value,
+		Level:        0,
+		JoinOperator: "AMD",
+	})
 	return q
 }
 
@@ -474,6 +491,33 @@ func SelectQuery[T any, X any](ctx context.Context, db db.DB, q *Query[T], args 
 	var output []*X
 	for rows.Next() {
 		var tmp X
+		err := rows.StructScan(&tmp)
+		if err != nil {
+			return nil, err
+		}
+		output = append(output, &tmp)
+	}
+	return output, nil
+}
+
+func Select[T any](ctx context.Context, db db.DB, q string, args ...interface{}) ([]*T, error) {
+	if db == nil {
+		var err error
+		db, err = GetDBContext(ctx, "")
+		if err != nil {
+			return nil, fmt.Errorf("failed to get db context: %v", err)
+		}
+	}
+	rows, err := NamedQuery(ctx, db, q, args)
+	if err != nil {
+		return nil, err
+	}
+	if rows == nil {
+		return nil, sql.ErrNoRows
+	}
+	var output []*T
+	for rows.Next() {
+		var tmp T
 		err := rows.StructScan(&tmp)
 		if err != nil {
 			return nil, err

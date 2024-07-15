@@ -8,7 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	db2 "github.com/Seann-Moser/cutil/sqlc/orm/db"
+	"github.com/Seann-Moser/cutil/sqlc/orm/db"
 	"reflect"
 	"regexp"
 	"sort"
@@ -40,11 +40,11 @@ var (
 )
 
 type Table[T any] struct {
-	Dataset   string                `json:"dataset"`
-	Name      string                `json:"name"`
-	Columns   map[string]db2.Column `json:"columns"`
-	QueryType QueryType             `json:"query_type"`
-	db        db2.DB
+	Dataset   string               `json:"dataset"`
+	Name      string               `json:"name"`
+	Columns   map[string]db.Column `json:"columns"`
+	QueryType QueryType            `json:"query_type"`
+	db        db.DB
 }
 
 func NewTable[T any](databaseName string, queryType QueryType) (*Table[T], error) {
@@ -53,14 +53,14 @@ func NewTable[T any](databaseName string, queryType QueryType) (*Table[T], error
 	newTable := Table[T]{
 		Dataset:   databaseName,
 		Name:      ToSnakeCase(getType(s)),
-		Columns:   map[string]db2.Column{},
+		Columns:   map[string]db.Column{},
 		QueryType: queryType,
 	}
 
 	structType := reflect.TypeOf(s)
 	var setPrimary bool
 	for i := 0; i < structType.NumField(); i++ {
-		var column *db2.Column
+		var column *db.Column
 		field := structType.Field(i)
 		name := field.Tag.Get(TagColumnNamePrefix)
 		if name == "" {
@@ -91,7 +91,7 @@ func NewTable[T any](databaseName string, queryType QueryType) (*Table[T], error
 		newTable.Columns[column.Name] = *column
 	}
 	if !setPrimary {
-		return nil, db2.MissingPrimaryKeyErr
+		return nil, db.MissingPrimaryKeyErr
 	}
 	return &newTable, nil
 }
@@ -102,12 +102,12 @@ func ToSnakeCase(str string) string {
 	return strings.ToLower(snake)
 }
 
-func (t *Table[T]) GetDB() db2.DB {
+func (t *Table[T]) GetDB() db.DB {
 	return t.db
 }
 
-func (t *Table[T]) GetPrimary() []db2.Column {
-	var primaryColumns []db2.Column
+func (t *Table[T]) GetPrimary() []db.Column {
+	var primaryColumns []db.Column
 	for _, c := range t.GetColumns() {
 		if c.Primary {
 			primaryColumns = append(primaryColumns, c)
@@ -117,30 +117,30 @@ func (t *Table[T]) GetPrimary() []db2.Column {
 	return primaryColumns
 }
 
-func (t *Table[T]) GetColumn(name string) db2.Column {
+func (t *Table[T]) GetColumn(name string) db.Column {
 	if column, found := t.GetColumns()[ToSnakeCase(name)]; found {
 		return column
 	}
-	return db2.Column{}
+	return db.Column{}
 }
 
-func (t *Table[T]) InitializeTable(ctx context.Context, db db2.DB, suffix ...string) error {
+func (t *Table[T]) InitializeTable(ctx context.Context, d db.DB, suffix ...string) error {
 	if t.db == nil {
-		t.db = db
+		t.db = d
 	}
-	if db == nil {
+	if d == nil {
 		return fmt.Errorf("no db set")
 	}
 	t.Name = strings.Join(append([]string{t.Name}, suffix...), "_")
-	err := db.CreateTable(ctx, db.GetDataset(t.Dataset), t.Name, t.Columns)
+	err := d.CreateTable(ctx, d.GetDataset(t.Dataset), t.Name, t.Columns)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (t *Table[T]) GetColumns() map[string]db2.Column {
-	c := map[string]db2.Column{}
+func (t *Table[T]) GetColumns() map[string]db.Column {
+	c := map[string]db.Column{}
 	if t.db == nil {
 		return t.Columns
 	}
@@ -189,7 +189,7 @@ func (t *Table[T]) WhereValues(whereElementsStr ...string) []string {
 
 }
 
-func (t *Table[T]) Select(ctx context.Context, db db2.DB, conditional string, groupBy bool, args ...interface{}) ([]*T, error) {
+func (t *Table[T]) Select(ctx context.Context, d db.DB, conditional string, groupBy bool, args ...interface{}) ([]*T, error) {
 	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(t.GetSelectableColumns(groupBy), ","), t.FullTableName())
 	keys, err := getKeys(args...)
 	if err != nil {
@@ -204,17 +204,17 @@ func (t *Table[T]) Select(ctx context.Context, db db2.DB, conditional string, gr
 	if len(order) > 0 {
 		query = fmt.Sprintf("%s %s", query, order)
 	}
-	return t.NamedSelect(ctx, db, query, args...)
+	return t.NamedSelect(ctx, d, query, args...)
 }
 
-func (t *Table[T]) NamedSelect(ctx context.Context, db db2.DB, query string, args ...interface{}) ([]*T, error) {
-	if db == nil {
-		db = t.db
+func (t *Table[T]) NamedSelect(ctx context.Context, d db.DB, query string, args ...interface{}) ([]*T, error) {
+	if d == nil {
+		d = t.db
 	}
-	if db == nil {
+	if d == nil {
 		return nil, nil
 	}
-	rows, err := t.NamedQuery(ctx, db, query, args...)
+	rows, err := t.NamedQuery(ctx, d, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +233,7 @@ func (t *Table[T]) NamedSelect(ctx context.Context, db db2.DB, query string, arg
 	return output, nil
 }
 
-func (t *Table[T]) GetSelectableColumns(groupBy bool, names ...db2.Column) []string {
+func (t *Table[T]) GetSelectableColumns(groupBy bool, names ...db.Column) []string {
 	var selectValues []string
 	selectableColumns := t.GetColumns()
 	if len(names) > 0 {
@@ -275,7 +275,7 @@ func (t *Table[T]) WhereStatement(conditional string, whereElementsStr ...string
 func (t *Table[T]) OrderByStatement(groupBy bool, orderBy ...string) string {
 	var orderByValues []string
 
-	var columns []db2.Column
+	var columns []db.Column
 	c := t.GetColumns()
 	for _, o := range orderBy {
 		if v, found := c[o]; found {
@@ -304,7 +304,7 @@ func (t *Table[T]) OrderByStatement(groupBy bool, orderBy ...string) string {
 	return fmt.Sprintf("ORDER BY %s", strings.Join(orderByValues, ","))
 }
 
-func (t *Table[T]) OrderByColumns(groupBy bool, columns ...db2.Column) string {
+func (t *Table[T]) OrderByColumns(groupBy bool, columns ...db.Column) string {
 	var orderByValues []string
 
 	for _, column := range t.Columns {
@@ -336,8 +336,8 @@ func (t *Table[T]) IsAutoGenerateID() bool {
 	return false
 }
 
-func (t *Table[T]) GetGenerateID() []db2.Column {
-	var output []db2.Column
+func (t *Table[T]) GetGenerateID() []db.Column {
+	var output []db.Column
 	for _, e := range t.Columns {
 		if e.AutoGenerateID {
 			output = append(output, e)
@@ -441,7 +441,7 @@ func (t *Table[T]) UpdateStatement() string {
 	return update
 }
 
-func DeleteStatement(fullTableName string, columns map[string]db2.Column) string {
+func DeleteStatement(fullTableName string, columns map[string]db.Column) string {
 	var whereValues []string
 	for _, e := range columns {
 		if e.Primary {
@@ -455,7 +455,7 @@ func DeleteStatement(fullTableName string, columns map[string]db2.Column) string
 	return fmt.Sprintf("DELETE FROM %s WHERE %s", fullTableName, strings.Join(whereValues, " AND "))
 }
 
-func (t *Table[T]) DeleteWithColumns(ctx context.Context, fullTableName string, columns map[string]db2.Column, s T) error {
+func (t *Table[T]) DeleteWithColumns(ctx context.Context, fullTableName string, columns map[string]db.Column, s T) error {
 	if t.db == nil {
 		return nil
 	}
@@ -488,11 +488,11 @@ func (t *Table[T]) CountStatement(conditional string, whereElementsStr ...string
 	return fmt.Sprintf("SELECT COUNT(*) as count FROM %s %s", t.FullTableName(), wh)
 }
 
-func (t *Table[T]) NamedQuery(ctx context.Context, db db2.DB, query string, args ...interface{}) (db2.DBRow, error) {
-	if db == nil {
-		db = t.db
+func (t *Table[T]) NamedQuery(ctx context.Context, d db.DB, query string, args ...interface{}) (db.DBRow, error) {
+	if d == nil {
+		d = t.db
 	}
-	if db == nil {
+	if d == nil {
 		return nil, nil
 	}
 	a, err := combineStructs(args...)
@@ -500,14 +500,14 @@ func (t *Table[T]) NamedQuery(ctx context.Context, db db2.DB, query string, args
 		return nil, err
 	}
 	query = fixArrays(query, a)
-	return db.QueryContext(ctx, query, a)
+	return d.QueryContext(ctx, query, a)
 }
 
-func (t *Table[T]) NamedExec(ctx context.Context, db db2.DB, query string, args ...interface{}) error {
-	if db == nil {
-		db = t.db
+func (t *Table[T]) NamedExec(ctx context.Context, d db.DB, query string, args ...interface{}) error {
+	if d == nil {
+		d = t.db
 	}
-	if db == nil {
+	if d == nil {
 		return nil
 	}
 	a, err := combineStructs(args...)
@@ -515,10 +515,10 @@ func (t *Table[T]) NamedExec(ctx context.Context, db db2.DB, query string, args 
 		return err
 	}
 	query = fixArrays(query, a)
-	return db.ExecContext(ctx, query, a)
+	return d.ExecContext(ctx, query, a)
 }
 
-func (t *Table[T]) HasColumn(c db2.Column) (string, bool) {
+func (t *Table[T]) HasColumn(c db.Column) (string, bool) {
 	if !c.Join && !c.Select && c.WhereJoin == "" {
 		return "", false
 	}
@@ -542,8 +542,8 @@ func (t *Table[T]) HasColumn(c db2.Column) (string, bool) {
 	return "", false
 }
 
-func (t *Table[T]) GetCommonColumns(columns map[string]db2.Column) map[string]db2.Column {
-	overlappingColumns := map[string]db2.Column{}
+func (t *Table[T]) GetCommonColumns(columns map[string]db.Column) map[string]db.Column {
+	overlappingColumns := map[string]db.Column{}
 	for k, column := range columns {
 		if _, found := t.HasColumn(column); found {
 			overlappingColumns[k] = column
@@ -552,12 +552,12 @@ func (t *Table[T]) GetCommonColumns(columns map[string]db2.Column) map[string]db
 	return overlappingColumns
 }
 
-func (t *Table[T]) SelectJoinStmt(JoinType string, orderBy []string, groupBy bool, tableColumns ...map[string]db2.Column) (string, error) {
-	overlappingColumns := map[string]db2.Column{}
-	allColumns := map[string]db2.Column{}
+func (t *Table[T]) SelectJoinStmt(JoinType string, orderBy []string, groupBy bool, tableColumns ...map[string]db.Column) (string, error) {
+	overlappingColumns := map[string]db.Column{}
+	allColumns := map[string]db.Column{}
 	for _, columns := range tableColumns {
-		overlappingColumns = JoinMaps[db2.Column](overlappingColumns, t.GetCommonColumns(columns))
-		allColumns = JoinMaps[db2.Column](allColumns, columns)
+		overlappingColumns = JoinMaps[db.Column](overlappingColumns, t.GetCommonColumns(columns))
+		allColumns = JoinMaps[db.Column](allColumns, columns)
 	}
 	if len(overlappingColumns) == 0 {
 		return "", NoOverlappingColumnsErr
@@ -570,7 +570,7 @@ func (t *Table[T]) SelectJoinStmt(JoinType string, orderBy []string, groupBy boo
 	return selectStmt, nil
 }
 
-func (t *Table[T]) generateJoinStmt(columns map[string]db2.Column, JoinType string) string {
+func (t *Table[T]) generateJoinStmt(columns map[string]db.Column, JoinType string) string {
 	if len(columns) == 0 {
 		return ""
 	}
@@ -604,7 +604,7 @@ func (t *Table[T]) generateJoinStmt(columns map[string]db2.Column, JoinType stri
 	return output
 }
 
-func (t *Table[T]) generateWhereStmt(columns map[string]db2.Column) string {
+func (t *Table[T]) generateWhereStmt(columns map[string]db.Column) string {
 	if len(columns) == 0 {
 		return ""
 	}
@@ -615,11 +615,11 @@ func (t *Table[T]) generateWhereStmt(columns map[string]db2.Column) string {
 	return fmt.Sprintf(" WHERE %s", strings.Join(stmts, " AND "))
 }
 
-func (t *Table[T]) Insert(ctx context.Context, db db2.DB, s ...T) (string, error) {
-	if db == nil {
-		db = t.db
+func (t *Table[T]) Insert(ctx context.Context, d db.DB, s ...T) (string, error) {
+	if d == nil {
+		d = t.db
 	}
-	if db == nil {
+	if d == nil {
 		return "", nil
 	}
 	tracer := otel.GetTracerProvider()
@@ -639,10 +639,10 @@ func (t *Table[T]) Insert(ctx context.Context, db db2.DB, s ...T) (string, error
 				return "", err
 			}
 		}
-		err := db.ExecContext(ctx, t.InsertStatement(len(s)), args)
+		err := d.ExecContext(ctx, t.InsertStatement(len(s)), args)
 		if err == nil {
 			span.RecordError(err)
-			_ = cachec.GlobalCacheMonitor.DeleteCache(ctx, t.FullTableName())
+			_ = cachec.GlobalCacheMonitor.UpdateCache(ctx, t.FullTableName(), "insert")
 		}
 		return generateIds[t.GetGenerateID()[0].Name], err
 	}
@@ -652,19 +652,19 @@ func (t *Table[T]) Insert(ctx context.Context, db db2.DB, s ...T) (string, error
 		span.RecordError(err)
 		return "", err
 	}
-	err = db.ExecContext(ctx, t.InsertStatement(len(s)), args)
+	err = d.ExecContext(ctx, t.InsertStatement(len(s)), args)
 	if err == nil {
 		span.RecordError(err)
-		_ = cachec.GlobalCacheMonitor.DeleteCache(ctx, t.FullTableName())
+		_ = cachec.GlobalCacheMonitor.UpdateCache(ctx, t.FullTableName(), "insert")
 	}
 	return "", err
 }
 
-func (t *Table[T]) Upsert(ctx context.Context, db db2.DB, s ...T) (string, error) {
-	if db == nil {
-		db = t.db
+func (t *Table[T]) Upsert(ctx context.Context, d db.DB, s ...T) (string, error) {
+	if d == nil {
+		d = t.db
 	}
-	if db == nil {
+	if d == nil {
 		return "", nil
 	}
 	tracer := otel.GetTracerProvider()
@@ -684,10 +684,10 @@ func (t *Table[T]) Upsert(ctx context.Context, db db2.DB, s ...T) (string, error
 				return "", err
 			}
 		}
-		err := db.ExecContext(ctx, t.UpsertStatement(len(s)), args)
+		err := d.ExecContext(ctx, t.UpsertStatement(len(s)), args)
 		if err == nil {
 			span.RecordError(err)
-			_ = cachec.GlobalCacheMonitor.DeleteCache(ctx, t.FullTableName())
+			_ = cachec.GlobalCacheMonitor.UpdateCache(ctx, t.FullTableName(), "insert")
 		}
 		return generateIds[t.GetGenerateID()[0].Name], err
 	}
@@ -695,10 +695,10 @@ func (t *Table[T]) Upsert(ctx context.Context, db db2.DB, s ...T) (string, error
 	if err != nil {
 		return "", err
 	}
-	err = db.ExecContext(ctx, t.UpsertStatement(len(s)), args)
+	err = d.ExecContext(ctx, t.UpsertStatement(len(s)), args)
 	if err == nil {
 		span.RecordError(err)
-		_ = cachec.GlobalCacheMonitor.DeleteCache(ctx, t.FullTableName())
+		_ = cachec.GlobalCacheMonitor.UpdateCache(ctx, t.FullTableName(), "insert")
 	}
 	return "", err
 }
@@ -720,22 +720,22 @@ func (t *Table[T]) InsertTx(ctx context.Context, db *sqlx.Tx, s ...T) (sql.Resul
 	return results, "", err
 }
 
-func (t *Table[T]) Delete(ctx context.Context, db db2.DB, s T) error {
-	if db == nil {
-		db = t.db
+func (t *Table[T]) Delete(ctx context.Context, d db.DB, s T) error {
+	if d == nil {
+		d = t.db
 	}
-	if db == nil {
+	if d == nil {
 		return nil
 	}
 	tracer := otel.GetTracerProvider()
 	ctx, span := tracer.Tracer("delete").Start(ctx, t.FullTableName())
 	defer span.End()
-	err := db.ExecContext(ctx, t.DeleteStatement(), s)
+	err := d.ExecContext(ctx, t.DeleteStatement(), s)
 	if err != nil {
 		span.RecordError(err)
 		return err
 	}
-	_ = cachec.GlobalCacheMonitor.DeleteCache(ctx, t.FullTableName())
+	_ = cachec.GlobalCacheMonitor.UpdateCache(ctx, t.FullTableName(), "insert")
 	return nil
 }
 
@@ -747,26 +747,26 @@ func (t *Table[T]) DeleteTx(ctx context.Context, db *sqlx.Tx, s T) (sql.Result, 
 	if err != nil {
 		return r, err
 	}
-	_ = cachec.GlobalCacheMonitor.DeleteCache(ctx, t.FullTableName())
+	_ = cachec.GlobalCacheMonitor.UpdateCache(ctx, t.FullTableName(), "insert")
 	return r, nil
 }
 
-func (t *Table[T]) Update(ctx context.Context, db db2.DB, s T) error {
-	if db == nil {
-		db = t.db
+func (t *Table[T]) Update(ctx context.Context, d db.DB, s T) error {
+	if d == nil {
+		d = t.db
 	}
-	if db == nil {
+	if d == nil {
 		return nil
 	}
 	tracer := otel.GetTracerProvider()
 	ctx, span := tracer.Tracer("update").Start(ctx, t.FullTableName())
 	defer span.End()
-	err := db.ExecContext(ctx, t.UpdateStatement(), s)
+	err := d.ExecContext(ctx, t.UpdateStatement(), s)
 	if err != nil {
 		span.RecordError(err)
 		return err
 	}
-	_ = cachec.GlobalCacheMonitor.DeleteCache(ctx, t.FullTableName())
+	_ = cachec.GlobalCacheMonitor.UpdateCache(ctx, t.FullTableName(), "insert")
 	return nil
 }
 
@@ -779,12 +779,12 @@ func (t *Table[T]) UpdateTx(ctx context.Context, db *sqlx.Tx, s T) (sql.Result, 
 	if err != nil {
 		return nil, err
 	}
-	_ = cachec.GlobalCacheMonitor.DeleteCache(ctx, t.FullTableName())
+	_ = cachec.GlobalCacheMonitor.UpdateCache(ctx, t.FullTableName(), "insert")
 	return r, nil
 }
 
-func NamedQuery(ctx context.Context, db db2.DB, query string, args ...interface{}) (db2.DBRow, error) {
-	if db == nil {
+func NamedQuery(ctx context.Context, d db.DB, query string, args ...interface{}) (db.DBRow, error) {
+	if d == nil {
 		return nil, nil
 	}
 	a, err := combineStructs(args...)
@@ -792,5 +792,5 @@ func NamedQuery(ctx context.Context, db db2.DB, query string, args ...interface{
 		return nil, err
 	}
 	query = fixArrays(query, a)
-	return db.QueryContext(ctx, query, a)
+	return d.QueryContext(ctx, query, a)
 }

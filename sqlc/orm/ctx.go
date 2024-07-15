@@ -3,6 +3,7 @@ package orm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/Seann-Moser/cutil/sqlc/orm/db"
 )
 
@@ -17,6 +18,9 @@ type DBCtxName string
 const DBContext = "db-base-context"
 
 func AddTableCtx[T any](ctx context.Context, db db.DB, dataset string, queryType QueryType, suffix ...string) (context.Context, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("unable to get db from context")
+	}
 	table, err := NewTable[T](dataset, queryType)
 	if err != nil {
 		return ctx, err
@@ -37,6 +41,9 @@ func AddDBContext(ctx context.Context, name string, db db.DB) context.Context {
 	if name == "" {
 		name = DBContext
 	}
+	if ctx == nil {
+		return ctx
+	}
 	ctx = context.WithValue(ctx, DBCtxName(name), db)
 	return ctx
 }
@@ -44,6 +51,9 @@ func AddDBContext(ctx context.Context, name string, db db.DB) context.Context {
 func GetDBContext(ctx context.Context, name string) (db.DB, error) {
 	if name == "" {
 		name = DBContext
+	}
+	if ctx == nil {
+		return nil, fmt.Errorf("unable to get db from context")
 	}
 	value := ctx.Value(DBCtxName(name))
 	if value == nil {
