@@ -51,6 +51,17 @@ func TestQuery_From(t *testing.T) {
 //	assert.Equal(t, "col1", col.Name)
 //}
 
+func TestQuery_Column(t *testing.T) {
+	table := &Table[Role]{
+		Columns: map[string]db.Column{
+			"col1": {Name: "col1"},
+		},
+	}
+	q := &Query[Role]{FromTable: table}
+	col := q.Column("col1")
+	assert.Equal(t, "col1", col.Name)
+}
+
 func TestQuery_Join(t *testing.T) {
 	q := &Query[Role]{}
 	q.Join(map[string]db.Column{"col1": {Name: "col1"}}, "INNER JOIN")
@@ -110,54 +121,3 @@ func TestQuery_UseCache(t *testing.T) {
 	q.UseCache()
 	assert.True(t, q.useCache)
 }
-
-//func TestQuery_Run(t *testing.T) {
-//	mockDB := new(db.MockDB)
-//	q := &Query[Role]{
-//		FromTable: &Table[Role]{
-//			Name: "test_table",
-//			db:   mockDB,
-//			Columns: map[string]db.Column{
-//				"col1": {Name: "col1"},
-//			},
-//		},
-//	}
-//
-//	q.Build()
-//
-//	_, err := q.Run(context.Background(), mockDB)
-//	assert.NoError(t, err)
-//}
-//
-//func TestQuery_RunSingle(t *testing.T) {
-//	mockDB := new(db.MockDB)
-//	q := &Query[Role]{
-//		FromTable: &Table[Role]{
-//			Name: "test_table",
-//			db:   mockDB,
-//		},
-//	}
-//	ctx := context.Background()
-//
-//	//mockDB.On("NamedQuery", ctx, mock.Anything, mock.Anything).Return(&sql.Rows{}, nil)
-//
-//	_, err := q.RunSingle(ctx, mockDB)
-//	assert.NoError(t, err)
-//}
-//
-//func TestQuery_RunMap(t *testing.T) {
-//	mockDB := new(db.MockDB)
-//	q := &Query[Role]{
-//		FromTable: &Table[Role]{
-//			Name: "test_table",
-//			db:   mockDB,
-//		},
-//		MapKeyColumns: []db.Column{{Name: "col1"}},
-//	}
-//	ctx := context.Background()
-//
-//	//mockDB.On("NamedQuery", ctx, mock.Anything, mock.Anything).Return(&sql.Rows{}, nil)
-//
-//	_, err := q.RunMap(ctx, mockDB)
-//	assert.NoError(t, err)
-//}

@@ -3,6 +3,9 @@ package db
 import (
 	"context"
 	"fmt"
+	"math/rand"
+	"regexp"
+	"time"
 )
 
 type MockDB struct {
@@ -11,7 +14,7 @@ type MockDB struct {
 	Prefix   string
 }
 
-func (m MockDB) GetDataset(ds string) string {
+func (m *MockDB) GetDataset(ds string) string {
 	if len(m.Prefix) > 0 {
 		return m.Prefix + ds
 	}
@@ -35,11 +38,12 @@ func NewMockDB() *MockDB {
 		Tables: map[string]*MockTable{},
 	}
 }
-func (m MockDB) Ping(ctx context.Context) error {
+
+func (m *MockDB) Ping(ctx context.Context) error {
 	return nil
 }
 
-func (m MockDB) CreateTable(ctx context.Context, dataset, table string, columns map[string]Column) error {
+func (m *MockDB) CreateTable(ctx context.Context, dataset, table string, columns map[string]Column) error {
 	m.Tables[fmt.Sprintf("%s.%s", dataset, table)] = &MockTable{
 		name:    table,
 		dataset: dataset,
@@ -53,21 +57,39 @@ func (m MockDB) CreateTable(ctx context.Context, dataset, table string, columns 
 	return nil
 }
 
-func (m MockDB) QueryContext(ctx context.Context, query string, args interface{}) (DBRow, error) {
+func (m *MockDB) QueryContext(ctx context.Context, query string, args interface{}) (DBRow, error) {
 	if valid, err := isSQLValid(query); err != nil && !valid {
 		return nil, fmt.Errorf("invalid query %s: %v", query, err)
 	}
 	return nil, nil
 }
 
-func (m MockDB) ExecContext(ctx context.Context, query string, args interface{}) error {
+func (m *MockDB) ExecContext(ctx context.Context, query string, args interface{}) error {
+	query = replacePlaceholdersWithRandomValues(query)
 	if valid, err := isSQLValid(query); err != nil && !valid {
 		return fmt.Errorf("invalid query %s: %v", query, err)
 	}
 	return nil
 }
 
-func (m MockDB) Close() {
+func (m *MockDB) Close() {
 }
 
-var _ DB = MockDB{}
+var _ DB = &MockDB{}
+
+func generateRandomValue() string {
+	return fmt.Sprintf("%d", rand.New(rand.NewSource(time.Now().UnixNano())).Intn(1000))
+}
+
+// Function to replace all :{[0-9]+_*\w+} with a random value in a string
+func replacePlaceholdersWithRandomValues(input string) string {
+	// Compile the regex pattern
+	re := regexp.MustCompile(`:\d+_*\w+`)
+
+	// Replace each placeholder with a random value
+	result := re.ReplaceAllStringFunc(input, func(_ string) string {
+		return generateRandomValue()
+	})
+
+	return result
+}
